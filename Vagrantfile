@@ -17,31 +17,9 @@ FLATCAR_URL_TEMPLATE = "https://%s.release.flatcar-linux.net/amd64-usr/current/f
 DISK_UUID = Time.now.utc.to_i
 
 SUPPORTED_OS = {
-  "flatcar-stable"      => {box: "flatcar-stable",             user: "core", box_url: FLATCAR_URL_TEMPLATE % ["stable"]},
-  "flatcar-beta"        => {box: "flatcar-beta",               user: "core", box_url: FLATCAR_URL_TEMPLATE % ["beta"]},
-  "flatcar-alpha"       => {box: "flatcar-alpha",              user: "core", box_url: FLATCAR_URL_TEMPLATE % ["alpha"]},
-  "flatcar-edge"        => {box: "flatcar-edge",               user: "core", box_url: FLATCAR_URL_TEMPLATE % ["edge"]},
   "ubuntu2004"          => {box: "generic/ubuntu2004",         user: "vagrant"},
   "ubuntu2204"          => {box: "generic/ubuntu2204",         user: "vagrant"},
-  "ubuntu2404"          => {box: "bento/ubuntu-24.04",         user: "vagrant"},
-  "centos8"             => {box: "centos/8",                   user: "vagrant"},
-  "centos8-bento"       => {box: "bento/centos-8",             user: "vagrant"},
-  "almalinux8"          => {box: "almalinux/8",                user: "vagrant"},
-  "almalinux8-bento"    => {box: "bento/almalinux-8",          user: "vagrant"},
-  "almalinux9"          => {box: "almalinux/9",                user: "vagrant"},
-  "rockylinux8"         => {box: "rockylinux/8",               user: "vagrant"},
-  "rockylinux9"         => {box: "rockylinux/9",               user: "vagrant"},
-  "fedora39"            => {box: "fedora/39-cloud-base",       user: "vagrant"},
-  "fedora40"            => {box: "fedora/40-cloud-base",       user: "vagrant"},
-  "fedora39-arm64"      => {box: "bento/fedora-39-arm64",      user: "vagrant"},
-  "fedora40-arm64"      => {box: "bento/fedora-40",            user: "vagrant"},
-  "opensuse"            => {box: "opensuse/Leap-15.6.x86_64",  user: "vagrant"},
-  "opensuse-tumbleweed" => {box: "opensuse/Tumbleweed.x86_64", user: "vagrant"},
-  "oraclelinux"         => {box: "generic/oracle7",            user: "vagrant"},
-  "oraclelinux8"        => {box: "generic/oracle8",            user: "vagrant"},
-  "rhel8"               => {box: "generic/rhel8",              user: "vagrant"},
-  "debian11"            => {box: "debian/bullseye64",          user: "vagrant"},
-  "debian12"            => {box: "debian/bookworm64",          user: "vagrant"},
+  "ubuntu2404"          => {box: "bento/ubuntu-24.04",         user: "vagrant"}
 }
 
 if File.exist?(CONFIG)
@@ -56,9 +34,9 @@ $vm_memory ||= 2048
 $vm_cpus ||= 2
 $shared_folders ||= {}
 $forwarded_ports ||= {}
-$subnet ||= "172.18.8"
+$subnet ||= "192.168.56"
 $subnet_ipv6 ||= "fd3c:b398:0698:0756"
-$os ||= "ubuntu2004"
+$os ||= "ubuntu2404"
 $network_plugin ||= "flannel"
 $inventories ||= []
 # Setting multi_networking to true will install Multus: https://github.com/k8snetworkplumbingwg/multus-cni
@@ -83,7 +61,7 @@ $kube_node_instances ||= $num_instances - $first_node + 1
 
 # The following only works when using the libvirt provider
 $kube_node_instances_with_disks ||= false
-$kube_node_instances_with_disks_size ||= "20G"
+$kube_node_instances_with_disks_size ||= "30G"
 $kube_node_instances_with_disks_number ||= 2
 $override_disk_size ||= false
 $disk_size ||= "20GB"
@@ -200,10 +178,6 @@ Vagrant.configure("2") do |config|
         lv.memory = $vm_memory
         lv.cpus = $vm_cpus
         lv.default_prefix = 'kubespray'
-        # Fix kernel panic on fedora 28
-        if $os == "fedora"
-          lv.cpu_mode = "host-passthrough"
-        end
       end
 
       if $kube_node_instances_with_disks
@@ -234,19 +208,10 @@ Vagrant.configure("2") do |config|
         node.vm.network "forwarded_port", guest: guest, host: host, auto_correct: true
       end
 
-      if ["rhel8"].include? $os
-        # Vagrant synced_folder rsync options cannot be used for RHEL boxes as Rsync package cannot
-        # be installed until the host is registered with a valid Red Hat support subscription
-        node.vm.synced_folder ".", "/vagrant", disabled: false
-        $shared_folders.each do |src, dst|
-          node.vm.synced_folder src, dst
-        end
-      else
-        node.vm.synced_folder ".", "/vagrant", disabled: false, type: "rsync", rsync__args: ['--verbose', '--archive', '--delete', '-z'] , rsync__exclude: ['.git','venv']
+      node.vm.synced_folder ".", "/vagrant", disabled: false, type: "rsync", rsync__args: ['--verbose', '--archive', '--delete', '-z'] , rsync__exclude: ['.git','venv']
         $shared_folders.each do |src, dst|
           node.vm.synced_folder src, dst, type: "rsync", rsync__args: ['--verbose', '--archive', '--delete', '-z']
         end
-      end
 
       ip = "#{$subnet}.#{i+100}"
       ip6 = "#{$subnet_ipv6}::#{i+100}"
@@ -267,30 +232,9 @@ Vagrant.configure("2") do |config|
       node.vm.provision "shell", inline: "swapoff -a"
 
       # ubuntu2004 and ubuntu2204 have IPv6 explicitly disabled. This undoes that.
-      if ["ubuntu2004", "ubuntu2204"].include? $os
+      if ["ubuntu2004", "ubuntu2204", "ubuntu2404" ].include? $os
         node.vm.provision "shell", inline: "rm -f /etc/modprobe.d/local.conf"
         node.vm.provision "shell", inline: "sed -i '/net.ipv6.conf.all.disable_ipv6/d' /etc/sysctl.d/99-sysctl.conf /etc/sysctl.conf"
-      end
-      # Hack for fedora39/40 to get the IP address of the second interface
-      if ["fedora39", "fedora40", "fedora39-arm64", "fedora40-arm64"].include? $os
-        config.vm.provision "shell", inline: <<-SHELL
-          nmcli conn modify 'Wired connection 2' ipv4.addresses $(cat /etc/sysconfig/network-scripts/ifcfg-eth1 | grep IPADDR | cut -d "=" -f2)/24
-          nmcli conn modify 'Wired connection 2' ipv4.method manual
-          service NetworkManager restart
-        SHELL
-      end
-
-
-      # Rockylinux boxes needs UEFI
-      if ["rockylinux8", "rockylinux9"].include? $os
-        config.vm.provider "libvirt" do |domain|
-          domain.loader = "/usr/share/OVMF/x64/OVMF_CODE.fd"
-        end
-      end
-
-      # Disable firewalld on oraclelinux/redhat vms
-      if ["oraclelinux","oraclelinux8", "rhel8","rockylinux8"].include? $os
-        node.vm.provision "shell", inline: "systemctl stop firewalld; systemctl disable firewalld"
       end
 
       host_vars[vm_name] = {
