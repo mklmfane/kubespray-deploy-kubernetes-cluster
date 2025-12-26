@@ -33,6 +33,76 @@ ansible-playbook -i /inventory/inventory.ini --private-key /root/.ssh/id_rsa clu
 
 See [Getting started](/docs/getting_started/getting-started.md)
 
+##### Deploy a Production Ready Kubernetes Cluster
+
+![Kubernetes Logo](https://raw.githubusercontent.com/kubernetes-sigs/kubespray/master/docs/img/kubernetes-logo.png)
+ 
+docker run --rm -it --mount type=bind,source="$(pwd)"/inventory/sample,dst=/inventory \
+
+##### Local control-node setup (pyenv + direnv + multiple Ansible versions)
+If you want to run Kubespray locally and keep multiple Ansible versions installed side-by-side (for example 2.17 and 2.19), you can use:
+pyenv + pyenv-virtualenv for Python version management
+direnv for per-folder environment loading (optional)
+pipx to install Ansible versions as isolated CLI tools
+
+###### 1 Add the following to your ~/.bashrc
+
+```bash
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash)"
+
+# Load pyenv-virtualenv automatically
+eval "$(pyenv virtualenv-init -)"
+
+# Load direnv (optional, but recommended if you use .envrc)
+eval "$(direnv hook bash)"
+
+use_ans219() {
+unalias ansible ansible-playbook 2>/dev/null || true
+
+alias ansible='ansible@2.19'
+alias ansible-playbook='ansible-playbook@2.19'
+hash -r
+
+ansible --version
+}
+
+use_ans217() {
+unalias ansible ansible-playbook 2>/dev/null || true
+alias ansible='ansible@2.17'
+alias ansible-playbook='ansible-playbook@2.17'
+hash -r
+ansible --version
+}
+```
+
+Restart your shell for the changes to take effect:
+bash +exec "$SHELL" -l
+
+##### Install Ansible 2.17 and 2.19 separately (Python3 + pipx)
+
+This installs each version in its own isolated environment and exposes versioned binaries like:
+ansible@2.17, ansible-playbook@2.17, ansible@2.19, ansible-playbook@2.19. 
+Pipx
+
+```bash 
+# Install pipx with Python3 (user install) 
+python3 -m pip install --user --upgrade pipx 
+python3 -m pipx ensurepath 
+# Restart your shell so 
+#~/.local/bin is on PATH +exec "$SHELL" -l
+# Install Ansible side-by-side using pipx suffixes (suffix is applied to venv + executables) 
+pipx install --include-deps --suffix=@2.17 "ansible==2.17.*" 
+pipx install --include-deps --suffix=@2.19 "ansible==2.19.*"
+# Verify both versions exist +ansible@2.17 --version +ansible@2.19 --version +
+```
+
+##### Switch versions quickly in your shell
+```bash 
+use_ans217 # makes `ansible` and `ansible-playbook` use 2.17 +use_ans219 # makes `ansible` and `ansible-playbook` use 2.19 +
+```
+
 #### Collection
 
 See [here](docs/ansible/ansible_collection.md) if you wish to use this repository as an Ansible collection

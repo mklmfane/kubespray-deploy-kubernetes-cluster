@@ -33,13 +33,13 @@
 
 
 
-VAGRANT_VERSION=2.4.1
-VAGRANT_DEFAULT_PROVIDER=libvirt
+VAGRANT_VERSION=2.4.9
+VAGRANT_DEFAULT_PROVIDER=virtualbox
 VAGRANT_ANSIBLE_TAGS=facts
 LANG=C.UTF-8
 DEBIAN_FRONTEND=noninteractive
 PYTHONDONTWRITEBYTECODE=1
-KUBE_VERSION=1.29.5
+KUBE_VERSION=1.34.2
 pipeline_install() {
     cp /etc/apt/sources.list /etc/apt/sources.list."$(date +"%F")"
     sed -i -e '/^# deb-src.*universe$/s/# //g' /etc/apt/sources.list
